@@ -1,0 +1,354 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Multizone Floor Heating Manager",
+        "description": "The integration is set up in configuration.yaml."
+      }
+    },
+    "abort": {
+      "yaml_only": "Multizone Floor Heating Manager is set up in configuration.yaml. See the documentation for the `multizone_floor_heating_manager:` section; the integration appears here after a restart.",
+      "single_instance_allowed": "Multizone Floor Heating Manager is already set up from configuration.yaml."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "heat_request": {
+        "name": "Heat request"
+      }
+    },
+    "button": {
+      "add_schedule": {
+        "name": "Add schedule"
+      },
+      "delete_schedule": {
+        "name": "Delete schedule"
+      }
+    },
+    "climate": {
+      "zone": {
+        "state_attributes": {
+          "zone_state": {
+            "name": "Zone state",
+            "state": {
+              "idle": "Idle",
+              "waiting": "Waiting",
+              "heating": "Heating",
+              "forced": "Forced",
+              "sensor_fault": "Sensor fault"
+            }
+          },
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "idle": "Idle",
+              "waiting": "Waiting period",
+              "calling_zone": "Calling zone",
+              "heating": "Heating",
+              "held_by_minimum_off_time": "Waiting for heat source minimum off time",
+              "spreading_heat": "Spreading heat (minimum on time)",
+              "too_warm_for_spreading": "Idle, too warm to take spread heat",
+              "heat_source_unavailable": "Heating, heat source switch unavailable",
+              "no_reading_yet": "Waiting for a sensor reading",
+              "sensor_fault": "Sensor fault, valve follows the heat source",
+              "season_off": "Heating season off",
+              "sensor_fault_season_off": "Sensor fault (heating season off)",
+              "forced": "Manual schedule",
+              "forced_too_warm": "Manual schedule, paused: too warm",
+              "failsafe_heating": "Failsafe heating",
+              "failsafe_waiting": "Failsafe, waiting for operation start",
+              "valve_exercise": "Valve exercise"
+            }
+          },
+          "valve": {
+            "name": "Valve"
+          },
+          "calling_zone": {
+            "name": "Calling zone"
+          }
+        }
+      }
+    },
+    "date": {
+      "schedule_date": {
+        "name": "Schedule date"
+      },
+      "holiday_end_date": {
+        "name": "Holiday end date"
+      }
+    },
+    "number": {
+      "hysteresis": {
+        "name": "Hysteresis"
+      },
+      "wait_time": {
+        "name": "Wait time"
+      },
+      "hp_min_on_time": {
+        "name": "Heat source minimum on time"
+      },
+      "hp_min_off_time": {
+        "name": "Heat source minimum off time"
+      },
+      "sensor_fault_timeout": {
+        "name": "Sensor fault timeout"
+      },
+      "manual_max_temp": {
+        "name": "Manual max temperature"
+      },
+      "manual_resume_delta": {
+        "name": "Manual resume difference"
+      },
+      "holiday_temp": {
+        "name": "Holiday temperature"
+      },
+      "failsafe_trigger": {
+        "name": "Failsafe operation delay"
+      },
+      "valve_exercise_duration": {
+        "name": "Off-season valve exercise duration"
+      },
+      "long_run_alarm": {
+        "name": "Long run alarm"
+      },
+      "schedule_temperature": {
+        "name": "Schedule temperature"
+      }
+    },
+    "select": {
+      "schedule_kind": {
+        "name": "Schedule type",
+        "state": {
+          "auto": "Auto (sets the target temperature)",
+          "manual": "Manual (forces heating)"
+        }
+      },
+      "schedule_zone": {
+        "name": "Schedule zone"
+      },
+      "schedule_days": {
+        "name": "Schedule days",
+        "state": {
+          "once": "Once (on the schedule date)",
+          "every_day": "Every day",
+          "monday_to_friday": "Monday to Friday",
+          "saturday_and_sunday": "Saturday and Sunday",
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday",
+          "saturday": "Saturday",
+          "sunday": "Sunday"
+        }
+      },
+      "existing_schedule": {
+        "name": "Existing schedule"
+      },
+      "valve_exercise_day": {
+        "name": "Off-season valve exercise day",
+        "state": {
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday",
+          "saturday": "Saturday",
+          "sunday": "Sunday"
+        }
+      }
+    },
+    "sensor": {
+      "zone_state": {
+        "name": "State",
+        "state": {
+          "idle": "Idle",
+          "waiting": "Waiting",
+          "heating": "Heating",
+          "forced": "Forced",
+          "sensor_fault": "Sensor fault"
+        }
+      },
+      "reason": {
+        "name": "Reason",
+        "state": {
+          "idle": "Idle",
+          "waiting": "Waiting period",
+          "calling_zone": "Calling zone",
+          "heating": "Heating",
+          "held_by_minimum_off_time": "Waiting for heat source minimum off time",
+          "spreading_heat": "Spreading heat (minimum on time)",
+          "too_warm_for_spreading": "Idle, too warm to take spread heat",
+          "heat_source_unavailable": "Heating, heat source switch unavailable",
+          "no_reading_yet": "Waiting for a sensor reading",
+          "sensor_fault": "Sensor fault, valve follows the heat source",
+          "season_off": "Heating season off",
+          "sensor_fault_season_off": "Sensor fault (heating season off)",
+          "forced": "Manual schedule",
+          "forced_too_warm": "Manual schedule, paused: too warm",
+          "failsafe_heating": "Failsafe heating",
+          "failsafe_waiting": "Failsafe, waiting for operation start",
+          "valve_exercise": "Valve exercise"
+        },
+        "state_attributes": {
+          "until": {
+            "name": "Until"
+          }
+        }
+      },
+      "effective_setpoint": {
+        "name": "Effective target temperature"
+      },
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "normal": "Normal",
+          "holiday": "Holiday",
+          "failsafe": "Failsafe"
+        },
+        "state_attributes": {
+          "shadow": {
+            "name": "Shadow mode"
+          }
+        }
+      },
+      "alerts": {
+        "name": "Alerts",
+        "state_attributes": {
+          "alerts": {
+            "name": "Alerts"
+          }
+        }
+      },
+      "schedules": {
+        "name": "Schedules",
+        "state_attributes": {
+          "schedules": {
+            "name": "Schedules"
+          }
+        }
+      },
+      "heat_source": {
+        "name": "Heat source",
+        "state": {
+          "unavailable": "Switch unavailable",
+          "season_off": "Heating season off",
+          "held_by_minimum_off_time": "Waiting for minimum off time",
+          "spreading_heat": "Running for minimum on time (spreading heat)",
+          "failsafe_heating": "Failsafe heating",
+          "failsafe_waiting": "Failsafe, waiting for operation start",
+          "heating": "Heating",
+          "idle": "Off, no heat demand"
+        },
+        "state_attributes": {
+          "until": {
+            "name": "Until"
+          }
+        }
+      }
+    },
+    "switch": {
+      "heating_season": {
+        "name": "Heating season"
+      },
+      "shadow_mode": {
+        "name": "Shadow mode"
+      },
+      "holiday": {
+        "name": "Holiday"
+      }
+    },
+    "time": {
+      "sensor_fault_reminder": {
+        "name": "Sensor fault reminder time"
+      },
+      "failsafe_window_start": {
+        "name": "Failsafe operation start"
+      },
+      "failsafe_window_end": {
+        "name": "Failsafe operation stop"
+      },
+      "valve_exercise_time": {
+        "name": "Off-season valve exercise time"
+      },
+      "schedule_start": {
+        "name": "Schedule start"
+      },
+      "schedule_end": {
+        "name": "Schedule end"
+      },
+      "holiday_end_time": {
+        "name": "Holiday end time"
+      }
+    }
+  },
+  "selector": {
+    "schedule_kind": {
+      "options": {
+        "auto": "Auto: sets the target temperature",
+        "manual": "Manual: forces heating"
+      }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    }
+  },
+  "services": {
+    "add_schedule": {
+      "name": "Add schedule",
+      "description": "Adds an auto or manual schedule. A schedule that is not valid, or an auto schedule that overlaps another one for the same zone, is rejected and nothing is stored.",
+      "fields": {
+        "kind": {
+          "name": "Type",
+          "description": "Auto sets the zones' target temperature during the window; manual forces the zones to heat during the window."
+        },
+        "zones": {
+          "name": "Zones",
+          "description": "Zone ids from the YAML configuration (e.g. living_room), or all for every zone, including zones added later."
+        },
+        "date": {
+          "name": "Date",
+          "description": "For a one-shot schedule: the day its window starts. Give either a date or weekdays."
+        },
+        "weekdays": {
+          "name": "Weekdays",
+          "description": "For a recurring schedule: the days its window starts on (all seven for every day). Give either a date or weekdays."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Start of the window, local time."
+        },
+        "end": {
+          "name": "End",
+          "description": "End of the window, local time (not included). An end before the start crosses midnight."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Auto schedules only: the target temperature during the window (10–30 °C), in your unit system."
+        }
+      }
+    },
+    "delete_schedule": {
+      "name": "Delete schedule",
+      "description": "Deletes a schedule.",
+      "fields": {
+        "schedule_id": {
+          "name": "Schedule number",
+          "description": "The schedule's number, as in its label (#3 or 3)."
+        }
+      }
+    },
+    "list_schedules": {
+      "name": "List schedules",
+      "description": "Returns every schedule, as in the Schedules sensor's attribute."
+    }
+  }
+}

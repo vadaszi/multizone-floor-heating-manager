@@ -1,0 +1,276 @@
+"""Persistence of the logic state and the UI settings.
+
+One `helpers.storage.Store` file holds:
+- `core`: `CoreState.to_dict()`, restored with `load_state` (versioned by the core);
+- `settings`: the values changed from the UI (zone and global parameters, heating
+  season, shadow mode, schedules, holiday); the adapter owns them and the entities
+  and services only show and change them;
+- `pending_off`: switches that still have to confirm the final OFF after Shadow mode
+  was switched ON;
+- `heartbeat`: per Shelly (`ShellyWiring.key`), failed heartbeat calls in a row and the
+  alerts sent, so a restart neither repeats an alert nor loses a recovery.
+
+Saves are delayed and coalesced (at most one write per `SAVE_DELAY`); a pending save is
+written when HA stops.
+"""
+
+from __future__ import annotations
+
+import contextlib
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from datetime import date, time
+from typing import Any
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
+
+from .const import SAVE_DELAY, STORAGE_KEY, STORAGE_VERSION
+from .core.config import (
+    GLOBAL_PARAM_SPECS,
+    TIME_OF_DAY_PARAMS,
+    ZONE_PARAM_SPECS,
+    ConfigError,
+    CoreConfig,
+    GlobalParams,
+    ParamSpec,
+    ZoneParams,
+)
+from .core.heartbeat import HeartbeatTracking
+from .core.schedule import Schedule, load_schedules, schedules_to_list
+from .core.state import CoreState, load_state
+
+HOLIDAY_END_TIME = time(12, 0)  # the holiday end time on a first install
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Values changed from the UI; defaults on a first install."""
+
+    zone_params: Mapping[str, ZoneParams]
+    global_params: GlobalParams = field(default_factory=GlobalParams)
+    heating_season: bool = True
+    shadow_mode: bool = True  # on first install, and when nothing usable is stored
+    schedules: tuple[Schedule, ...] = ()
+    schedule_counter: int = 0  # the last schedule number handed out; never reused
+    holiday_on: bool = False
+    holiday_end_date: date | None = None  # None: no end
+    holiday_end_time: time = HOLIDAY_END_TIME  # local; never empty, kept when holiday ends
+
+    @classmethod
+    def defaults(cls, config: CoreConfig) -> Settings:
+        return cls(zone_params={zone_id: ZoneParams() for zone_id in config.zone_ids})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "zones": {
+                zone_id: _params_to_dict(params, ZONE_PARAM_SPECS)
+                for zone_id, params in self.zone_params.items()
+            },
+            "global": {
+                **_params_to_dict(self.global_params, GLOBAL_PARAM_SPECS),
+                **{key: getattr(self.global_params, key).isoformat() for key in TIME_OF_DAY_PARAMS},
+                "valve_exercise_weekday": self.global_params.valve_exercise_weekday,
+            },
+            "heating_season": self.heating_season,
+            "shadow_mode": self.shadow_mode,
+            "schedules": schedules_to_list(self.schedules),
+            "schedule_counter": self.schedule_counter,
+            "holiday_on": self.holiday_on,
+            "holiday_end_date": None
+            if self.holiday_end_date is None
+            else self.holiday_end_date.isoformat(),
+            "holiday_end_time": self.holiday_end_time.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: object, config: CoreConfig) -> tuple[Settings, list[str]]:
+        """Parse `to_dict` output; unusable parts fall back to their defaults."""
+        defaults = cls.defaults(config)
+        if data is None:
+            return defaults, []
+        if not isinstance(data, Mapping):
+            return defaults, [f"Stored settings are unusable ({data!r}); using defaults."]
+        warnings: list[str] = []
+        zones = data.get("zones")
+        zones = zones if isinstance(zones, Mapping) else {}
+        zone_params = {
+            zone_id: _params_from(ZoneParams, zones.get(zone_id), ZONE_PARAM_SPECS, warnings)
+            for zone_id in config.zone_ids
+        }
+        global_data = data.get("global")
+        global_params = _params_from(
+            GlobalParams, global_data, GLOBAL_PARAM_SPECS, warnings, _other_globals(global_data)
+        )
+        season = data.get("heating_season", defaults.heating_season)
+        shadow = data.get("shadow_mode", defaults.shadow_mode)
+        if not isinstance(season, bool) or not isinstance(shadow, bool):
+            warnings.append("Stored heating season / shadow mode are unusable; using defaults.")
+            season, shadow = defaults.heating_season, defaults.shadow_mode
+        schedules, schedule_warnings = load_schedules(data.get("schedules"), config)
+        warnings += schedule_warnings
+        holiday_on, end_date, end_time = _holiday(data, warnings)
+        return cls(
+            zone_params,
+            global_params,
+            season,
+            shadow,
+            schedules,
+            _counter(data.get("schedule_counter"), schedules),
+            holiday_on,
+            end_date,
+            end_time,
+        ), warnings
+
+
+def _counter(value: object, schedules: tuple[Schedule, ...]) -> int:
+    """The stored schedule counter, never below a number already in use."""
+    counter = value if isinstance(value, int) and not isinstance(value, bool) else 0
+    used = [int(s.id) for s in schedules if s.id.isdigit()]
+    return max([counter, *used])
+
+
+def _holiday(data: Mapping[str, Any], warnings: list[str]) -> tuple[bool, date | None, time]:
+    """Holiday on, its end date and its end time."""
+    on = data.get("holiday_on", False)
+    try:
+        end_date, end_time = _holiday_end(data)
+    except TypeError, ValueError:
+        warnings.append("Stored holiday is unusable; holiday is off.")
+        return False, None, HOLIDAY_END_TIME
+    if not isinstance(on, bool):
+        warnings.append("Stored holiday is unusable; holiday is off.")
+        return False, None, end_time
+    return on, end_date, end_time
+
+
+def _holiday_end(data: Mapping[str, Any]) -> tuple[date | None, time]:
+    """The stored end. Raises `TypeError` / `ValueError` if it is unusable."""
+    stored_date, stored_time = data.get("holiday_end_date"), data.get("holiday_end_time")
+    end_date = None if stored_date is None else date.fromisoformat(stored_date)
+    end_time = HOLIDAY_END_TIME if stored_time is None else time.fromisoformat(stored_time)
+    return end_date, end_time
+
+
+def _params_to_dict(params: object, specs: Mapping[str, ParamSpec]) -> dict[str, Any]:
+    return {key: spec.to_number(getattr(params, key)) for key, spec in specs.items()}
+
+
+def _params_from[P: (ZoneParams, GlobalParams)](
+    cls: Callable[..., P],
+    data: object,
+    specs: Mapping[str, ParamSpec],
+    warnings: list[str],
+    extra: Mapping[str, Any] | None = None,
+) -> P:
+    if not isinstance(data, Mapping):
+        return cls()
+    values: dict[str, Any] = dict(extra or {})
+    for key, spec in specs.items():
+        number = data.get(key)
+        if isinstance(number, int | float) and not isinstance(number, bool):
+            values[key] = spec.from_number(number)
+    try:
+        return cls(**values)
+    except ConfigError as err:
+        warnings.append(f"Stored parameters are unusable ({err.errors}); using defaults.")
+        return cls()
+
+
+def _other_globals(data: object) -> dict[str, time | int]:
+    """The stored global parameters that are no number spec: the times of day and the
+    valve exercise weekday, as far as readable (missing ones keep their defaults)."""
+    if not isinstance(data, Mapping):
+        return {}
+    values: dict[str, time | int] = {}
+    for key in TIME_OF_DAY_PARAMS:
+        value = data.get(key)
+        if isinstance(value, str):
+            with contextlib.suppress(ValueError):
+                values[key] = time.fromisoformat(value)
+    weekday = data.get("valve_exercise_weekday")
+    if isinstance(weekday, int) and not isinstance(weekday, bool):
+        values["valve_exercise_weekday"] = weekday
+    return values
+
+
+@dataclass(frozen=True)
+class StoredData:
+    """What was restored at startup."""
+
+    core: CoreState
+    settings: Settings
+    pending_off: frozenset[str]
+    warnings: list[str]
+    heartbeat: Mapping[str, HeartbeatTracking] = field(default_factory=dict)
+
+
+class FloorHeatingStore:
+    """The integration's storage file."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._latest: dict[str, Any] | None = None
+        self._save_pending = False
+
+    async def async_load(
+        self,
+        config: CoreConfig,
+        switches: tuple[str, ...],
+        shelly_keys: tuple[str, ...] = (),
+    ) -> StoredData:
+        """Restore the stored data for `config`; unusable parts start as on a first start.
+
+        `shelly_keys` are the keys of the Shellys with a watchdog; others are dropped.
+        """
+        try:
+            data: object = await self._store.async_load()
+        except Exception as err:  # corrupt file: start fresh
+            data = {}
+            warnings = [f"Stored data is unreadable ({err}); starting fresh."]
+        else:
+            warnings = []
+        if data is None:
+            data = {}
+        if not isinstance(data, Mapping):
+            warnings.append(f"Stored data is unusable ({data!r}); starting fresh.")
+            data = {}
+        core, core_warnings = load_state(data.get("core"), config)
+        settings, settings_warnings = Settings.from_dict(data.get("settings"), config)
+        pending = data.get("pending_off")
+        pending_off = frozenset(
+            entity_id
+            for entity_id in (pending if isinstance(pending, list) else [])
+            if entity_id in switches
+        )
+        stored_heartbeat = data.get("heartbeat")
+        if not isinstance(stored_heartbeat, Mapping):
+            stored_heartbeat = {}
+        heartbeat = {
+            key: HeartbeatTracking.from_dict(stored_heartbeat.get(key)) for key in shelly_keys
+        }
+        return StoredData(
+            core,
+            settings,
+            pending_off,
+            warnings + core_warnings + settings_warnings,
+            heartbeat,
+        )
+
+    def schedule_save(self, data: dict[str, Any]) -> None:
+        """Write `data` after `SAVE_DELAY`; later calls before the write replace it."""
+        self._latest = data
+        if not self._save_pending:
+            self._save_pending = True
+            self._store.async_delay_save(self._take, SAVE_DELAY)
+
+    def _take(self) -> dict[str, Any]:
+        self._save_pending = False
+        assert self._latest is not None
+        return self._latest
+
+    async def async_save_now(self, data: dict[str, Any]) -> None:
+        """Write at once (on stop); replaces a pending delayed save."""
+        self._latest = data
+        self._save_pending = False
+        await self._store.async_save(data)

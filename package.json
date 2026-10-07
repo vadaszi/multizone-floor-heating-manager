@@ -1,0 +1,17 @@
+{
+  "name": "multizone-floor-heating-manager-shelly-scripts",
+  "private": true,
+  "description": "Tests for the Multizone Floor Heating Manager Shelly watchdog scripts (shelly_scripts/)",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test \"tests/shelly/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "acorn": "8.18.0",
+    "acorn-walk": "8.3.5"
+  }
+}

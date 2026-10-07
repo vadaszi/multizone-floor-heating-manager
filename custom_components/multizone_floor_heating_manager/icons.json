@@ -1,0 +1,99 @@
+{
+  "entity": {
+    "button": {
+      "add_schedule": {
+        "default": "mdi:calendar-plus"
+      },
+      "delete_schedule": {
+        "default": "mdi:calendar-remove"
+      }
+    },
+    "date": {
+      "schedule_date": {
+        "default": "mdi:calendar"
+      },
+      "holiday_end_date": {
+        "default": "mdi:calendar-end"
+      }
+    },
+    "number": {
+      "schedule_temperature": {
+        "default": "mdi:thermometer"
+      },
+      "holiday_temp": {
+        "default": "mdi:palm-tree"
+      }
+    },
+    "select": {
+      "schedule_kind": {
+        "default": "mdi:format-list-bulleted-type"
+      },
+      "schedule_zone": {
+        "default": "mdi:home-floor-1"
+      },
+      "schedule_days": {
+        "default": "mdi:calendar-week"
+      },
+      "existing_schedule": {
+        "default": "mdi:calendar-clock"
+      },
+      "valve_exercise_day": {
+        "default": "mdi:calendar-week"
+      }
+    },
+    "sensor": {
+      "alerts": {
+        "default": "mdi:alert"
+      },
+      "reason": {
+        "default": "mdi:information-outline"
+      },
+      "zone_state": {
+        "default": "mdi:radiator"
+      },
+      "mode": {
+        "default": "mdi:home-thermometer"
+      },
+      "schedules": {
+        "default": "mdi:calendar-clock"
+      },
+      "heat_source": {
+        "default": "mdi:heat-pump-outline"
+      }
+    },
+    "switch": {
+      "heating_season": {
+        "default": "mdi:sun-snowflake-variant"
+      },
+      "shadow_mode": {
+        "default": "mdi:eye-outline"
+      },
+      "holiday": {
+        "default": "mdi:palm-tree"
+      }
+    },
+    "time": {
+      "sensor_fault_reminder": {
+        "default": "mdi:bell-ring"
+      },
+      "schedule_start": {
+        "default": "mdi:clock-start"
+      },
+      "schedule_end": {
+        "default": "mdi:clock-end"
+      },
+      "holiday_end_time": {
+        "default": "mdi:clock-end"
+      },
+      "failsafe_window_start": {
+        "default": "mdi:clock-start"
+      },
+      "failsafe_window_end": {
+        "default": "mdi:clock-end"
+      },
+      "valve_exercise_time": {
+        "default": "mdi:valve"
+      }
+    }
+  }
+}

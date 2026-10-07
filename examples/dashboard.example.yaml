@@ -1,0 +1,374 @@
+# Example dashboard for Multizone Floor Heating Manager (docs/dashboard.md).
+#
+# Built-in cards only. It is written for the two-zone configuration in
+# docs/getting-started.md:
+#   - "Living room" (id living_room): sensor.living_room_temperature, valve switch.valve_living_room
+#   - "Bathroom" (id bathroom): sensor.bathroom_temperature, no valve
+# Two views ("sections" type, each section one column):
+#   - "Floor heating": the badges, then one section per zone, the house and the help
+#     card; with three columns the zones fill the rows (e.g. 3 + 2, the house next to
+#     zone 5);
+#   - "Setup": the Heating season and Shadow mode switches with the heat source
+#     parameters, the other parameters (one card per group), schedules and holiday.
+# Replace these with your own zones: the integration's entity ids start with the zone's
+# name, e.g. climate.<zone>_floor_heating (see docs/configuration.md#entities). Copy a
+# zone's blocks (marked "zone: ...") for every further zone.
+#
+# Add it in HA: Settings -> Dashboards -> Add dashboard -> New dashboard from scratch,
+# open it, pencil -> three dots -> Raw configuration editor, paste this file.
+
+title: Floor heating
+views:
+  - title: Floor heating
+    path: floor-heating
+    icon: mdi:heating-coil
+    type: sections
+    max_columns: 3
+    badges:
+      - type: entity
+        entity: binary_sensor.floor_heating_heat_request
+        name: Heat request
+        show_name: true
+        state_content:
+          - state
+          - on_duration
+      - type: entity
+        entity: sensor.floor_heating_heat_source
+        name: Heat source
+        show_name: true
+      - type: entity
+        entity: switch.heat_pump_request
+        name: Heat pump relay
+        show_name: true
+      - type: entity
+        entity: sensor.floor_heating_alerts
+        name: Alerts
+        show_name: true
+      # zone: Living room
+      - type: entity
+        entity: climate.living_room_floor_heating
+        name: Living room
+        show_name: true
+        state_content:
+          - current_temperature
+          - zone_state
+          - reason
+      - type: entity
+        entity: climate.living_room_floor_heating
+        name: Living room valve wanted
+        show_name: true
+        state_content:
+          - valve
+      - type: entity
+        entity: switch.valve_living_room
+        name: Living room valve relay
+        show_name: true
+      # zone: Bathroom (no valve)
+      - type: entity
+        entity: climate.bathroom_floor_heating
+        name: Bathroom
+        show_name: true
+        state_content:
+          - current_temperature
+          - zone_state
+          - reason
+    sections:
+      - type: grid
+        cards:
+          # zone: Living room
+          - type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.living_room_floor_heating
+              - type: entities
+                show_header_toggle: false
+                entities:
+                  - entity: sensor.living_room_floor_heating_state
+                  - entity: sensor.living_room_floor_heating_reason
+                  - type: attribute
+                    entity: sensor.living_room_floor_heating_reason
+                    attribute: until
+                    name: Until
+                    format: time
+                  - entity: sensor.living_room_floor_heating_effective_target_temperature
+                  - entity: switch.valve_living_room
+                    name: Valve
+              # Temperature and target as lines; state, reason and valve as bars below.
+              # The sensor line is the raw reading (without the zone's sensor offset).
+              - type: history-graph
+                title: Living room, last 24 hours
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.living_room_temperature
+                    name: Temperature
+                  - entity: sensor.living_room_floor_heating_effective_target_temperature
+                    name: Target
+                  - entity: sensor.living_room_floor_heating_state
+                    name: State
+                  - entity: sensor.living_room_floor_heating_reason
+                    name: Reason
+                  - entity: switch.valve_living_room
+                    name: Valve
+
+      - type: grid
+        cards:
+          # zone: Bathroom (no valve: nothing to show for the valve)
+          - type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.bathroom_floor_heating
+              - type: entities
+                show_header_toggle: false
+                entities:
+                  - entity: sensor.bathroom_floor_heating_state
+                  - entity: sensor.bathroom_floor_heating_reason
+                  - type: attribute
+                    entity: sensor.bathroom_floor_heating_reason
+                    attribute: until
+                    name: Until
+                    format: time
+                  - entity: sensor.bathroom_floor_heating_effective_target_temperature
+              - type: history-graph
+                title: Bathroom, last 24 hours
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.bathroom_temperature
+                    name: Temperature
+                  - entity: sensor.bathroom_floor_heating_effective_target_temperature
+                    name: Target
+                  - entity: sensor.bathroom_floor_heating_state
+                    name: State
+                  - entity: sensor.bathroom_floor_heating_reason
+                    name: Reason
+
+      # The house, after the zones.
+      - type: grid
+        cards:
+          # Alerts: always shown, so you can see that there are none.
+          - type: markdown
+            title: Alerts
+            content: |
+              {% for alert in state_attr('sensor.floor_heating_alerts', 'alerts') or [] %}
+              - {{ alert.message }}
+              {% else %}
+              No active alerts.
+              {% endfor %}
+
+          # The house: heat source request with its running time, heat source status, mode.
+          - type: entities
+            title: House
+            show_header_toggle: false
+            entities:
+              - entity: binary_sensor.floor_heating_heat_request
+              - type: attribute
+                entity: binary_sensor.floor_heating_heat_request
+                attribute: on_duration
+                name: Running for
+                suffix: min
+              - entity: sensor.floor_heating_heat_source
+              - type: attribute
+                entity: sensor.floor_heating_heat_source
+                attribute: until
+                name: Until
+                format: time
+              - entity: sensor.floor_heating_mode
+      - type: grid
+        cards:
+          # What the states and reasons mean. Delete this card once you know them.
+          - type: markdown
+            title: What the states and reasons mean
+            content: |
+              **State** of a zone:
+              - **Idle**: warm enough, or nothing to do. The valve is closed.
+              - **Waiting**: the zone is cold while the heat source is off. Before it may start the heat source, it waits (wait time, default 30 min) in case a window was only opened briefly.
+              - **Heating**: the zone wants heat; its valve is open.
+              - **Forced**: a manual schedule runs. The valve is open and the zone asks for heat, whatever its temperature.
+              - **Sensor fault**: no valid reading for longer than the sensor fault timeout. The zone asks for no heat; its valve opens whenever the heat source runs for another zone.
+
+              **Heat source** (what the heat source does, and why):
+              - **Heating**: at least one zone wants heat, and the heat source is requested.
+              - **Off, no heat demand**: no zone needs heat.
+              - **Waiting for minimum off time**: a zone wants heat, but the heat source stopped less than its minimum off time ago. It starts at the "Until" time. This protects the heat pump from starting too often.
+              - **Running for minimum on time (spreading heat)**: no zone needs heat any more, but the heat source must run until its minimum on time (the "Until" time); the valves open to spread the heat.
+              - **Heating season off**: the heating season switch is off.
+              - **Switch unavailable**: the heat source switch does not report (e.g. a Wi-Fi problem). It counts as off, but it is not switched off because of that.
+              - **Failsafe heating**: no sensor has sent a valid reading for longer than the failsafe operation delay, so the heat source runs daily from failsafe operation start to stop (until the "Until" time) with every valve open.
+              - **Failsafe, waiting for operation start**: failsafe, outside the daily operation time; it starts again at the "Until" time.
+
+              **Mode**: **Normal**; **Holiday** while holiday is on; **Failsafe** from when no sensor has sent a valid reading for longer than the failsafe operation delay until the first sensor reports again (heating season only).
+
+              **Reason** of a zone (the "Until" row shows when a running timer ends):
+              - **Idle**: warm enough; nothing to do.
+              - **Waiting period**: too cold while the heat source is off; the wait time runs. If it is still too cold at the end, the zone starts heating.
+              - **Calling zone**: this zone started the current heat source run. When it reaches its target, the other zones below their stop temperature join, so they all finish together and none starts the heat source again soon after.
+              - **Heating**: heating in a run that another zone started.
+              - **Waiting for heat source minimum off time**: the zone wants heat and its valve is open, but the heat source stopped less than its minimum off time ago. This protects the heat pump from starting too often.
+              - **Spreading heat (minimum on time)**: every zone is warm enough, but the heat source must run until its minimum on time. The valves open to spread the heat over the house instead of stopping the heat pump early.
+              - **Idle, too warm to take spread heat**: during the spread, this zone is at or above the manual max temperature, so it stays closed.
+              - **Heating, heat source switch unavailable**: the zone wants heat, but the heat source switch does not report (e.g. a Wi-Fi problem). It is not switched off because of that.
+              - **Waiting for a sensor reading**: no valid reading since the start. After the sensor fault timeout it becomes a sensor fault.
+              - **Sensor fault, valve follows the heat source**: no valid reading. The zone asks for no heat; its valve is open while the heat source runs.
+              - **Heating season off**: the heating season switch is off: no heating at all.
+              - **Sensor fault (heating season off)**: both of the above.
+              - **Manual schedule**: a manual schedule forces the zone to heat until the window ends.
+              - **Manual schedule, paused: too warm**: a manual schedule runs, but the zone reached the manual max temperature. It stays closed until it is below that temperature minus the manual resume difference.
+              - **Failsafe heating**: no sensor has sent a valid reading for longer than the failsafe operation delay. Between failsafe operation start and stop every valve is open and the heat source runs, until the "Until" time.
+              - **Failsafe, waiting for operation start**: failsafe, but outside the daily operation time. It starts again at the "Until" time.
+              - **Valve exercise**: outside the heating season, the valves are opened one after another once a week so the actuators keep moving. This valve is open until the "Until" time; the heat source stays off.
+
+  - title: Setup
+    path: floor-heating-setup
+    icon: mdi:cog
+    type: sections
+    max_columns: 4
+    sections:
+      # The two main switches, away from the daily view (one tap on Shadow mode
+      # switches every relay off, one tap on Heating season stops the heating), and
+      # the heat source parameters.
+      - type: grid
+        cards:
+          - type: entities
+            title: Control
+            show_header_toggle: false
+            entities:
+              - entity: switch.floor_heating_heating_season
+              - entity: switch.floor_heating_shadow_mode
+          - type: entities
+            title: Heat source
+            show_header_toggle: false
+            entities:
+              - entity: number.floor_heating_heat_source_minimum_on_time
+                name: Minimum on time
+              - entity: number.floor_heating_heat_source_minimum_off_time
+                name: Minimum off time
+              - entity: number.floor_heating_long_run_alarm
+                name: Long run alarm
+      # Parameters, one card per group. The zone rows (marked "zone: ...") are repeated
+      # for every zone.
+      - type: grid
+        cards:
+          - type: entities
+            title: Hysteresis
+            show_header_toggle: false
+            entities:
+              # zone: Living room
+              - entity: number.living_room_floor_heating_hysteresis
+                name: Living room
+              # zone: Bathroom
+              - entity: number.bathroom_floor_heating_hysteresis
+                name: Bathroom
+      - type: grid
+        cards:
+          - type: entities
+            title: Wait time (open-window filter)
+            show_header_toggle: false
+            entities:
+              # zone: Living room
+              - entity: number.living_room_floor_heating_wait_time
+                name: Living room
+              # zone: Bathroom
+              - entity: number.bathroom_floor_heating_wait_time
+                name: Bathroom
+      - type: grid
+        cards:
+          - type: entities
+            title: Sensors and failsafe
+            show_header_toggle: false
+            entities:
+              - entity: number.floor_heating_sensor_fault_timeout
+                name: Sensor fault timeout
+              - entity: time.floor_heating_sensor_fault_reminder_time
+                name: Sensor fault reminder time
+              - entity: number.floor_heating_failsafe_operation_delay
+                name: Failsafe operation delay
+              - entity: time.floor_heating_failsafe_operation_start
+                name: Failsafe operation start
+              - entity: time.floor_heating_failsafe_operation_stop
+                name: Failsafe operation stop
+      - type: grid
+        cards:
+          # Schedules: the list, then the form to add and delete.
+          - type: markdown
+            title: Schedules
+            content: |
+              {% set schedules = state_attr('sensor.floor_heating_schedules', 'schedules') or [] %}
+              {% for schedule in schedules %}
+              - {{ schedule.label }}
+              {% else %}
+              No schedules.
+              {% endfor %}
+          - type: entities
+            title: New schedule
+            show_header_toggle: false
+            entities:
+              - entity: select.floor_heating_schedule_type
+                name: Type
+              - entity: select.floor_heating_schedule_zone
+                name: Zone
+              - entity: select.floor_heating_schedule_days
+                name: Days
+              - entity: date.floor_heating_schedule_date
+                name: Date (for "Once")
+              - entity: time.floor_heating_schedule_start
+                name: Start
+              - entity: time.floor_heating_schedule_end
+                name: End
+              - entity: number.floor_heating_schedule_temperature
+                name: Temperature (auto only)
+              - entity: button.floor_heating_add_schedule
+                name: Add schedule
+              - type: divider
+              - entity: select.floor_heating_existing_schedule
+                name: Schedule
+              - entity: button.floor_heating_delete_schedule
+                name: Delete schedule
+      - type: grid
+        cards:
+          - type: entities
+            title: Manual schedules
+            show_header_toggle: false
+            entities:
+              - entity: number.floor_heating_manual_max_temperature
+                name: Manual max temperature
+              - entity: number.floor_heating_manual_resume_difference
+                name: Manual resume difference
+      - type: grid
+        cards:
+          - type: entities
+            title: Off season
+            show_header_toggle: false
+            entities:
+              - entity: select.floor_heating_off_season_valve_exercise_day
+                name: Valve exercise day
+              - entity: time.floor_heating_off_season_valve_exercise_time
+                name: Valve exercise time
+              - entity: number.floor_heating_off_season_valve_exercise_duration
+                name: Valve exercise duration per valve
+      - type: grid
+        cards:
+          # Holiday: start/stop, end, each zone's holiday temperature, and the stored end
+          # as text.
+          - type: vertical-stack
+            cards:
+              - type: entities
+                title: Holiday
+                show_header_toggle: false
+                entities:
+                  - entity: switch.floor_heating_holiday
+                  - entity: date.floor_heating_holiday_end_date
+                    name: End date (empty = no end)
+                  - entity: time.floor_heating_holiday_end_time
+                    name: End time
+                  - entity: number.living_room_floor_heating_holiday_temperature
+                    name: Living room
+                  - entity: number.bathroom_floor_heating_holiday_temperature
+                    name: Bathroom
+              - type: markdown
+                content: |
+                  {% set day = states('date.floor_heating_holiday_end_date') %}
+                  {% set at = states('time.floor_heating_holiday_end_time') %}
+                  {% if day in ['unknown', 'unavailable'] %}
+                  **No end date:** holiday runs until you switch it off.
+                  {% else %}
+                  **Ends:** {{ as_datetime(day ~ 'T' ~ at).strftime('%a %Y-%m-%d %H:%M') }}
+                  {% endif %}

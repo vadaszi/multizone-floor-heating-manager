@@ -1,0 +1,368 @@
+"""YAML configuration and startup checks."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+from unittest.mock import patch
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
+from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+from homeassistant.util.yaml import parse_yaml
+
+from custom_components.multizone_floor_heating_manager.const import DOMAIN
+from custom_components.multizone_floor_heating_manager.core.units import TemperatureUnit
+from custom_components.multizone_floor_heating_manager.schema import CONFIG_SCHEMA, build_config
+
+from .conftest import PKG, World, make_conf, without_watchdog_for_all, zone_conf
+
+
+def _conf(**changes: Any) -> dict[str, Any]:
+    conf = make_conf(2)
+    conf[DOMAIN].update(changes)
+    if "relays_without_watchdog" not in changes and "shellys_with_watchdog" not in changes:
+        without_watchdog_for_all(conf[DOMAIN])
+    return conf
+
+
+def _zones(*zones: dict[str, Any]) -> dict[str, Any]:
+    return _conf(zones=list(zones))
+
+
+async def test_valid_config_sets_up(world: World, caplog: pytest.LogCaptureFixture) -> None:
+    world.setup_entities()
+    assert await world.setup(make_conf(2, unvalved=(2,)), live=False)
+    config = world.controller.config
+    assert config.core.zone_ids == ("zone_1", "zone_2")
+    assert config.valves == {"zone_1": "switch.valve_1"}
+    assert config.zones[1].valve is None
+    assert "Every zone has a valve" not in caplog.text
+    assert "Unknown entities" not in caplog.text
+
+
+async def test_all_valved_warning(world: World, caplog: pytest.LogCaptureFixture) -> None:
+    world.setup_entities()
+    assert await world.setup(make_conf(2), live=False)
+    assert "Every zone has a valve" in caplog.text
+
+
+async def test_optional_keys(world: World) -> None:
+    world.setup_entities()
+    conf = _zones(
+        zone_conf(1, sensor_offset=-0.4),
+        zone_conf(2, valve=False),
+    )
+    conf[DOMAIN].update(
+        plausible_min=5, plausible_max=35, reconcile_interval=30, output_mismatch_alert=5
+    )
+    without_watchdog_for_all(conf[DOMAIN])
+    assert await world.setup(conf, live=False)
+    config = world.controller.config
+    assert config.core.zones[0].sensor_offset == -0.4
+    assert (config.core.plausible_min, config.core.plausible_max) == (5, 35)
+    assert config.reconcile_interval.total_seconds() == 30
+    assert config.core.output_mismatch_alert == 5
+
+
+@pytest.mark.parametrize(
+    ("conf", "message"),
+    [
+        (_zones(zone_conf(1), zone_conf(1)), "duplicate zone id 'zone_1'"),
+        (
+            _zones(zone_conf(1), {**zone_conf(2), "name": " zone 1 "}),
+            "duplicate zone name ' zone 1 '",
+        ),
+        (_zones({**zone_conf(1), "id": "Living Room"}), "(e.g. 'living_room')"),
+        (_zones({**zone_conf(1), "valve": "light.valve"}), "expected a switch entity or 'none'"),
+        (
+            _zones({**zone_conf(1), "sensor": "switch.x"}),
+            "'switch.x' does not belong to domain 'sensor'",
+        ),
+        (
+            _zones({k: v for k, v in zone_conf(1).items() if k != "valve"}),
+            "required key 'valve' not provided",
+        ),
+        (_zones({**zone_conf(1), "valve": "switch.heat_source"}), "mapped more than once"),
+        (
+            _zones(zone_conf(1), {**zone_conf(2), "valve": "switch.valve_1"}),
+            "mapped more than once",
+        ),
+        (_conf(zones=[]), "length of value must be at least 1"),
+        (_conf(reconcile_interval=5), "value must be at least 10"),
+        (_conf(output_mismatch_alert=0), "value must be at least 1"),
+        (_conf(watchdog_ping_url="x"), "expected an http:// or https:// URL"),
+        (_conf(unknown_key=1), "'unknown_key' is an invalid option"),
+        (_zones({**zone_conf(1), "power_sensor": "sensor.p"}), "'power_sensor'"),  # removed
+        (_zones({**zone_conf(1), "sensor_offset": 6}), "sensor_offset: 6 °C is out of range"),
+        (_conf(plausible_min=40, plausible_max=0), "plausible range"),
+    ],
+)
+async def test_invalid_config_is_rejected_with_a_clear_error(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, conf: dict[str, Any], message: str
+) -> None:
+    assert not await async_setup_component(hass, DOMAIN, conf)
+    assert message in caplog.text
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+
+async def test_every_zone_error_is_reported(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    conf = _zones({**zone_conf(1), "id": "Bad 1"}, {**zone_conf(2), "id": "2bad"})
+    assert not await async_setup_component(hass, DOMAIN, conf)
+    assert "'Bad 1'" in caplog.text
+    assert "'2bad'" in caplog.text
+
+
+async def test_fahrenheit_config_is_converted(world: World, hass: HomeAssistant) -> None:
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    world.setup_entities()
+    conf = _zones(zone_conf(1, sensor_offset=-9), zone_conf(2))
+    conf[DOMAIN].update(plausible_min=32, plausible_max=104)
+    assert await world.setup(conf, live=False)
+    core = world.controller.config.core
+    assert core.zones[0].sensor_offset == pytest.approx(-5.0)
+    assert core.plausible_min == pytest.approx(0.0)
+    assert core.plausible_max == pytest.approx(40.0)
+
+
+async def test_fahrenheit_offset_range(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    assert not await async_setup_component(hass, DOMAIN, _zones(zone_conf(1, sensor_offset=10)))
+    assert "sensor_offset" in caplog.text
+
+
+async def test_no_yaml_section(hass: HomeAssistant) -> None:
+    assert await async_setup_component(hass, DOMAIN, {})
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+
+async def test_unknown_entities_are_reported_but_control_runs(
+    world: World, caplog: pytest.LogCaptureFixture
+) -> None:
+    world.temp(1, 22.0)
+    world.switch("switch.heat_source", "off")
+    world.switch("switch.valve_1", "off")
+    with patch(f"{PKG}.controller.persistent_notification.async_create") as notify:
+        assert await world.setup(make_conf(2), live=False)
+    assert "Unknown entities in the Multizone Floor Heating Manager configuration" in caplog.text
+    [call] = notify.call_args_list
+    message = call.args[1]
+    assert "switch.valve_2" in message
+    assert "sensor.zone_2_temperature" in message
+    assert "sensor.zone_1_temperature" not in message
+    assert call.kwargs["notification_id"] == f"{DOMAIN}_missing_entities"
+    assert world.controller.outputs is not None  # the loop runs anyway
+    assert world.mode(2) == "idle"
+    assert world.reason(2) == "no_reading_yet"
+
+
+async def test_registered_entity_without_state_is_known(world: World, hass: HomeAssistant) -> None:
+    """An entity of an integration that has not loaded yet is not unknown."""
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "sensor", "bthome", "abc", suggested_object_id="zone_2_temperature"
+    )
+    world.temp(1, 22.0)
+    world.switch("switch.heat_source", "off")
+    with patch(f"{PKG}.controller.persistent_notification.async_create") as notify:
+        assert await world.setup(make_conf(2, unvalved=(1, 2)), live=False)
+    notify.assert_not_called()
+
+
+# ---------------------------------------------------------------- Shellys
+
+_VALVES = {"host": "192.0.2.11", "script_id": 1, "switches": ["switch.valve_1", "switch.valve_2"]}
+_HEAT = {"name": "Heat", "host": "192.0.2.12", "script_id": 1, "switches": ["switch.heat_source"]}
+
+
+def _shellys(*shellys: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    return make_conf(2, shellys_with_watchdog=list(shellys), **extra)
+
+
+async def test_shelly_wiring(world: World) -> None:
+    world.setup_entities()
+    conf = _shellys(
+        {**_VALVES, "password": "pw"},
+        heartbeat_interval=120,
+        heartbeat_fail_alert=2,
+        heartbeat_timeout=3600,
+        heartbeat_check_interval=30,
+        relays_without_watchdog=["switch.heat_source"],
+    )
+    with patch(f"{PKG}.heartbeat.HeartbeatClient.async_start"):
+        assert await world.setup(conf, live=False)  # no calls: only the wiring is tested
+    config = world.controller.config
+    [shelly] = config.shellys_with_watchdog
+    assert shelly.name == "192.0.2.11"  # defaults to the host
+    assert shelly.role.value == "valve"
+    assert shelly.switches == ("switch.valve_1", "switch.valve_2")
+    assert shelly.password == "pw"
+    assert shelly.url == "http://192.0.2.11/script/1/heartbeat"
+    assert config.heartbeat_interval.total_seconds() == 120
+    assert config.heartbeat_fail_alert == 2
+    assert (
+        config.expected_params.heartbeat_timeout_s,
+        config.expected_params.check_interval_s,
+    ) == (
+        3600,
+        30,
+    )
+
+
+async def test_heat_source_shelly_role(world: World) -> None:
+    world.setup_entities()
+    with patch(f"{PKG}.heartbeat.HeartbeatClient.async_start"):
+        assert await world.setup(_shellys(_VALVES, _HEAT), live=False)
+    roles = {s.name: s.role.value for s in world.controller.config.shellys_with_watchdog}
+    assert roles == {"192.0.2.11": "valve", "Heat": "heat_source"}
+    assert world.controller.config.expected_params.check_interval_s is None
+
+
+@pytest.mark.parametrize(
+    ("conf", "message"),
+    [
+        (
+            make_conf(2, relays_without_watchdog=["switch.heat_source"]),
+            "switch switch.valve_1 is in neither list: add it to the switches of its Shelly under "
+            "shellys_with_watchdog, or to relays_without_watchdog",
+        ),
+        (
+            make_conf(
+                2,
+                relays_without_watchdog=[
+                    "switch.heat_source",
+                    "switch.valve_1",
+                    "switch.valve_2",
+                    "switch.x",
+                ],
+            ),
+            "relays_without_watchdog: switch.x is not a mapped switch",
+        ),
+        (
+            _shellys(
+                {**_VALVES, "switches": ["switch.valve_1", "switch.x"]},
+                _HEAT,
+                relays_without_watchdog=["switch.valve_2"],
+            ),
+            "shelly 192.0.2.11: switch.x is not a mapped switch",
+        ),
+        (
+            _shellys(
+                _VALVES,
+                {**_HEAT, "switches": ["switch.valve_1"]},
+                relays_without_watchdog=["switch.heat_source"],
+            ),
+            "switch switch.valve_1 is listed on more than one Shelly",
+        ),
+        (
+            _shellys(_VALVES, _HEAT, relays_without_watchdog=["switch.valve_2"]),
+            "switch switch.valve_2 is on Shelly 192.0.2.11 and in relays_without_watchdog",
+        ),
+        (
+            _shellys(
+                {**_HEAT, "switches": ["switch.heat_source", "switch.valve_1", "switch.valve_2"]}
+            ),
+            "shelly Heat: the heat source switch needs a Shelly of its own",
+        ),
+        (
+            _shellys(_VALVES, {**_HEAT, "host": "192.0.2.11"}),
+            "shellys_with_watchdog: 192.0.2.11 script 1 is listed more than once",
+        ),
+        (
+            _shellys({**_VALVES, "name": "heat "}, _HEAT),
+            "shellys_with_watchdog: the name 'heat' is used more than once",
+        ),
+        (
+            _shellys(_VALVES, _HEAT, heartbeat_interval=600, heartbeat_timeout=600),
+            "heartbeat_interval must be shorter than heartbeat_timeout",
+        ),
+        (_shellys({**_VALVES, "host": "http://192.0.2.11"}, _HEAT), "expected a host name"),
+        (_shellys({**_VALVES, "script_id": 0}, _HEAT), "value must be at least 1"),
+        (_shellys(_VALVES, _HEAT, heartbeat_interval=30), "value must be at least 60"),
+        (_shellys(_VALVES, _HEAT, heartbeat_fail_alert=0), "value must be at least 1"),
+    ],
+)
+async def test_invalid_shelly_config_is_rejected(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, conf: dict[str, Any], message: str
+) -> None:
+    assert not await async_setup_component(hass, DOMAIN, conf)
+    assert message in caplog.text
+
+
+_ROOT = Path(__file__).parents[2]
+_EXAMPLE = _ROOT / "examples" / "configuration.example.yaml"
+
+
+def _example_config(text: str) -> Any:
+    text = re.sub(r"!secret (\S+)", r'"https://secret.invalid/\1"', text)
+    text = text.replace("watchdog_ping_url: URL", 'watchdog_ping_url: "https://ping.invalid/check"')
+    conf = parse_yaml(text)
+    assert isinstance(conf, dict)
+    return build_config(CONFIG_SCHEMA(conf)[DOMAIN], TemperatureUnit.CELSIUS)
+
+
+def _uncomment(text: str, skip: str) -> str:
+    """Enable every commented-out key and its list items, except the key `skip`."""
+    lines = []
+    enabled = False
+    for line in text.splitlines():
+        match = re.fullmatch(r"(\s*)# (\s*)([a-z_]+:.*|- \S.*)", line)
+        if match is None:  # code or a comment in words
+            enabled = False
+        elif match[3].startswith("- "):  # a list item of the key above
+            if enabled:
+                line = match[1] + match[2] + match[3]
+        else:
+            enabled = not match[3].startswith(f"{skip}:")
+            if enabled:
+                line = match[1] + match[2] + match[3]
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def test_the_example_configuration_is_valid() -> None:
+    """`examples/configuration.example.yaml` passes the schema and the wiring checks."""
+    config = _example_config(_EXAMPLE.read_text())
+    zones = [zone.id for zone in config.core.zones]
+    assert zones == ["living_room", "kitchen", "bedroom", "bathroom"]
+    assert len(config.shellys_with_watchdog) == 2
+    assert config.notify == ("notify.mobile_app_phone", "notify.email")
+    assert config.watchdog_ping_url is None
+    assert config.expected_params.check_interval_s is None
+
+
+def test_every_optional_key_of_the_example_is_valid() -> None:
+    """With every commented-out key enabled, the example is still valid.
+
+    `relays_without_watchdog` is left out: its switch has to be moved there from a Shelly.
+    """
+    text = _uncomment(_EXAMPLE.read_text(), skip="relays_without_watchdog")
+    config = _example_config(text)
+    assert config.watchdog_ping_url == "https://ping.invalid/check"
+    assert config.expected_params.check_interval_s == 60
+    assert [s.password for s in config.shellys_with_watchdog] == [
+        "https://secret.invalid/floor_heating_shelly_password",
+        None,
+    ]
+    moved = text.replace("        - switch.valve_bedroom\n", "", 1)
+    moved = moved.replace(
+        "  # relays_without_watchdog:\n  #   - switch.valve_bedroom",
+        "  relays_without_watchdog:\n    - switch.valve_bedroom",
+    )
+    assert "\n  relays_without_watchdog:\n" in moved
+    _example_config(moved)
+
+
+def test_the_configuration_reference_shows_the_example_file() -> None:
+    """The example at the top of docs/configuration.md is the example file, word for word."""
+    doc = (_ROOT / "docs" / "configuration.md").read_text()
+    match = re.search(r"## Example\n\n```yaml\n(.*?)```", doc, re.DOTALL)
+    assert match is not None
+    assert match[1] == _EXAMPLE.read_text()
