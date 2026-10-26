@@ -4,7 +4,12 @@ Multizone Floor Heating Manager ships an example dashboard: [`examples/dashboard
 
 ## What it shows
 
-Two views, both of the "sections" type (each section is a column; Home Assistant places as many side by side as the screen allows, and stacks them on a phone).
+Three views, all of the "sections" type (each section is a column; Home Assistant places as many side by side as the screen allows, and stacks them on a phone).
+
+**"Overview" (a quick look):**
+- **Badges**: the heat source status and each zone's state.
+- **Zones**: a tile per zone with its temperature, where you can change the base target with − and +.
+- **Heat source and valves, last 24 hours**: one graph with the heat source status, the heat pump relay and every valve relay, so you can see at once when the heat source ran and which zones were open.
 
 **"Floor heating" (daily use):**
 - **At a glance** (the badges at the top, always shown): the heat request with its running time, the heat source status (what it does and why), the heat pump relay, the number of alerts; per zone its temperature, state and reason; per zone with a valve the valve the integration wants ("valve wanted") and what the relay does ("valve relay").
@@ -12,7 +17,7 @@ Two views, both of the "sections" type (each section is a column; Home Assistant
   - a thermostat card: the zone temperature and the base target, which you can change;
   - the zone's state and reason, the end of a running timer ("Until"), the effective target, and the valve relay (zones with a valve);
   - a graph of the last 24 hours: the temperature and the effective target as lines, and the state, reason and valve as coloured bars on the same time axis, so you can see what the integration decided and when. The temperature line is the sensor's raw reading, without the zone's sensor offset.
-- **House**, after the zones (with five zones next to the fifth): the alerts (always shown: the active alerts, or "No active alerts."), the heat request with its running time, the heat source status with the end of a running minimum on/off time ("Until"), and the mode (normal / holiday / failsafe).
+- **House**, after the zones (with five zones next to the fifth): the alerts (always shown: the active alerts, or "No active alerts."), the heat request with its running time, the heat source status with the end of a running minimum on/off time ("Until"), and the mode (normal / holiday / failsafe); below it a graph of the last 24 hours with the heat request, the heat source status and the heat pump relay.
 - **What the states and reasons mean**, after the house: a card that explains every heat source status, the mode, every zone state and reason in plain words. It is meant for learning; delete it when you no longer need it.
 
 ![The badges at the top of the daily view](../images/dashboard-badges.png)
@@ -32,9 +37,9 @@ No card has a "toggle all" switch in its header, so one tap can never switch sev
 1. Open the example file and replace the example zones with yours:
    - the example has two zones, "Living room" (with the valve `switch.valve_living_room`) and "Bathroom" (no valve), with the sensors `sensor.living_room_temperature` and `sensor.bathroom_temperature`;
    - the integration's entity ids start with the zone name, e.g. `climate.kitchen_floor_heating` and `sensor.kitchen_floor_heating_reason` for a zone named "Kitchen" (full list: [Entities](configuration.md#entities)). If you renamed an entity id, use yours;
-   - blocks that belong to a zone are marked with a `# zone: …` comment: the zone's section in the daily view, its badges in the `badges:` list, and its rows in the Hysteresis and Wait time cards. Copy them for every further zone (a zone's section goes before the house section), and remove the valve rows and badges for a zone without a valve;
+   - blocks that belong to a zone are marked with a `# zone: …` comment: its badge, tile and valve row in the Overview, the zone's section in the daily view, its badges in the `badges:` list, and its rows in the Hysteresis and Wait time cards. Copy them for every further zone (a zone's section goes before the house section), and remove the valve rows and badges for a zone without a valve;
    - add each zone's holiday temperature to the Holiday card;
-   - replace `switch.heat_pump_request` (the heat pump relay badge) with your heat source switch.
+   - replace `switch.heat_pump_request` (the heat pump relay badge and graph rows) with your heat source switch.
 2. In Home Assistant: *Settings → Dashboards → Add dashboard → New dashboard from scratch*, open the new dashboard, then *pencil → three dots → Raw configuration editor*, paste the file and save.
 
 The ids of the global entities (`…floor_heating_…` without a zone) are the same in every installation, unless you renamed them. The example uses the ids without an area: an entity that an update adds to a device you placed in an area may get the area in its id ([Updating](configuration.md#updating)).

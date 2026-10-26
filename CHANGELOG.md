@@ -2,6 +2,13 @@
 
 All notable changes to Multizone Floor Heating Manager. Each release lists the entities that were added, renamed or removed, so you know which dashboards and automations to check after an update ([Updating](docs/configuration.md#updating)).
 
+## 1.0.0 – unreleased
+
+**Example dashboard**
+- New first view "Overview": the heat source and each zone's state as badges, a tile per zone to change its target, and a 24 h graph of the heat source, its relay and the valves.
+- The House card has a 24 h graph of the heat request, the heat source status and the relay below it.
+- No entity changes.
+
 ## 1.0.0b1 – 2026-10-07
 
 First public release, as a beta: the control logic is fully tested in simulation and runs daily on one installation; testing with more heating systems is under way. Start in shadow mode, and please report what you find.
