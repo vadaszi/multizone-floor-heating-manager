@@ -9,7 +9,7 @@ A Home Assistant integration that controls **underfloor heating room by room**, 
 
 Each zone has a temperature sensor and (usually) a valve actuator on a relay. The integration opens the valves of the zones that need heat and requests heat from the heat source, while protecting the heat pump from short cycles. It is built for the slow, heavy nature of floor heating: long heat source runs, an open-window filter, and zones that finish a run together instead of calling for heat one after another.
 
-> **Status: beta.** The control logic is fully tested in simulation; testing with real heating systems is under way. Start in shadow mode, and please report what you find. Use it at your own risk.
+> **Status:** in daily use on a real installation; testing with more heating systems is welcome. Start in shadow mode, and please report what you find. Use it at your own risk.
 
 ## Features
 
