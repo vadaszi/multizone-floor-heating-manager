@@ -4,7 +4,10 @@
 # docs/getting-started.md:
 #   - "Living room" (id living_room): sensor.living_room_temperature, valve switch.valve_living_room
 #   - "Bathroom" (id bathroom): sensor.bathroom_temperature, no valve
-# Two views ("sections" type, each section one column):
+# Three views ("sections" type, each section one column):
+#   - "Overview": a quick look; the heat source and each zone's state as badges, a
+#     tile per zone (temperature, target to change) and a 24 h graph of the heat
+#     source, its relay and the valves;
 #   - "Floor heating": the badges, then one section per zone, the house and the help
 #     card; with three columns the zones fill the rows (e.g. 3 + 2, the house next to
 #     zone 5);
@@ -19,6 +22,72 @@
 
 title: Floor heating
 views:
+  - title: Overview
+    path: overview
+    icon: mdi:view-dashboard
+    type: sections
+    max_columns: 2
+    badges:
+      - type: entity
+        entity: sensor.floor_heating_heat_source
+        name: Heat source
+        show_name: true
+      # zone: Living room
+      - type: entity
+        entity: climate.living_room_floor_heating
+        name: Living room
+        show_name: true
+        state_content:
+          - zone_state
+      # zone: Bathroom
+      - type: entity
+        entity: climate.bathroom_floor_heating
+        name: Bathroom
+        show_name: true
+        state_content:
+          - zone_state
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Zones
+          # zone: Living room
+          - type: tile
+            entity: climate.living_room_floor_heating
+            name: Living room
+            state_content:
+              - current_temperature
+            features:
+              - type: target-temperature
+            grid_options:
+              columns: 6
+          # zone: Bathroom
+          - type: tile
+            entity: climate.bathroom_floor_heating
+            name: Bathroom
+            state_content:
+              - current_temperature
+            features:
+              - type: target-temperature
+            grid_options:
+              columns: 6
+      - type: grid
+        column_span: 2
+        cards:
+          - type: history-graph
+            title: Heat source and valves, last 24 hours
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.floor_heating_heat_source
+                name: Heat source
+              - entity: switch.heat_pump_request
+                name: Heat pump relay
+              # zone: Living room (a zone without a valve has no row here)
+              - entity: switch.valve_living_room
+                name: Living room valve
   - title: Floor heating
     path: floor-heating
     icon: mdi:heating-coil
@@ -154,24 +223,37 @@ views:
               No active alerts.
               {% endfor %}
 
-          # The house: heat source request with its running time, heat source status, mode.
-          - type: entities
-            title: House
-            show_header_toggle: false
-            entities:
-              - entity: binary_sensor.floor_heating_heat_request
-              - type: attribute
-                entity: binary_sensor.floor_heating_heat_request
-                attribute: on_duration
-                name: Running for
-                suffix: min
-              - entity: sensor.floor_heating_heat_source
-              - type: attribute
-                entity: sensor.floor_heating_heat_source
-                attribute: until
-                name: Until
-                format: time
-              - entity: sensor.floor_heating_mode
+          # The house: heat source request with its running time, heat source status, mode;
+          # below it the heat request, heat source status and relay of the last 24 hours.
+          - type: vertical-stack
+            cards:
+              - type: entities
+                title: House
+                show_header_toggle: false
+                entities:
+                  - entity: binary_sensor.floor_heating_heat_request
+                  - type: attribute
+                    entity: binary_sensor.floor_heating_heat_request
+                    attribute: on_duration
+                    name: Running for
+                    suffix: min
+                  - entity: sensor.floor_heating_heat_source
+                  - type: attribute
+                    entity: sensor.floor_heating_heat_source
+                    attribute: until
+                    name: Until
+                    format: time
+                  - entity: sensor.floor_heating_mode
+              - type: history-graph
+                title: Heat source, last 24 hours
+                hours_to_show: 24
+                entities:
+                  - entity: binary_sensor.floor_heating_heat_request
+                    name: Heat request
+                  - entity: sensor.floor_heating_heat_source
+                    name: Heat source
+                  - entity: switch.heat_pump_request
+                    name: Relay
       - type: grid
         cards:
           # What the states and reasons mean. Delete this card once you know them.
