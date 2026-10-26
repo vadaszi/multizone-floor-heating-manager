@@ -2,7 +2,9 @@
 
 All notable changes to Multizone Floor Heating Manager. Each release lists the entities that were added, renamed or removed, so you know which dashboards and automations to check after an update ([Updating](docs/configuration.md#updating)).
 
-## 1.0.0 – unreleased
+## 1.0.0 – 2026-10-26
+
+First stable release: the code of 1.0.0b1, which has run the heating of one installation without problems for three weeks, plus the changes below.
 
 **Example dashboard**
 - New first view "Overview": the heat source and each zone's state as badges, a tile per zone to change its target, and a 24 h graph of the heat source, its relay and the valves.
